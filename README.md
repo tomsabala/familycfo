@@ -66,7 +66,8 @@ It understands how Israeli money actually moves:
 ## Privacy and security
 
 - **Everything stays on your machine.** The API binds to `127.0.0.1` only and has **no login** — anyone who can reach
-  the port sees everything, so never expose it to a network or the internet.
+  the port sees everything, so never expose it to a network or the internet. It also refuses any request whose `Host`
+  or `Origin` isn't a loopback name, so a website you visit can't reach it by pointing its own domain at `127.0.0.1`.
 - Your bank logins live in `accounts.json` (git-ignored). The database `bank.db`, its backups and imported documents
   (`data/`) are git-ignored too. **Never commit them.** Prefer full-disk encryption on the computer that runs this.
 - Outgoing network calls, and what they send:
@@ -76,7 +77,8 @@ It understands how Israeli money actually moves:
   - the data chat, if you use it: your questions and the data it reads go to Anthropic through your own Claude Code login;
   - an optional categorization endpoint you configure (`categoryApiUrl`) receives transaction descriptions.
 - The data chat can only read: a read-only SQL connection, whitelisted GET endpoints of the local API, and the files in
-  `data/` (enforced by a hook that blocks reading anything else).
+  `data/` (enforced by a hook that blocks reading anything else). It runs in a private `0700` work directory, and the
+  document copies it reads there are deleted the moment it's done answering.
 
 ## Quick start — try the demo
 

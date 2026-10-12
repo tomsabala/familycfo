@@ -1,6 +1,6 @@
 import { spawn } from 'child_process';
-import { cpSync, existsSync, mkdirSync, rmSync, writeFileSync } from 'fs';
-import { tmpdir } from 'os';
+import { chmodSync, cpSync, existsSync, lstatSync, mkdirSync, rmSync, writeFileSync } from 'fs';
+import { tmpdir, userInfo } from 'os';
 import { join, resolve } from 'path';
 import type { FastifyInstance } from 'fastify';
 import type { DB } from '../db/connection.js';
@@ -15,8 +15,11 @@ import { POLICIES_DIR, REPORTS_DIR } from './routes/insurance.js';
 
 const ROOT = resolve('.');
 const AGENT_DIR = join(ROOT, 'agent');
-// outside the repo, so the project's files, settings and CLAUDE.md aren't part of the agent's context
-const WORKDIR = join(tmpdir(), 'household-agent');
+// outside the repo, so the project's files, settings and CLAUDE.md aren't part of the agent's context —
+// and per user, because it ends up holding copies of the household's documents
+const WORKDIR = join(tmpdir(), `household-agent-${userInfo().uid}`);
+/** A Claude Code session id, as it comes back from the CLI — anything else could be an argv flag. */
+const SESSION_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function schemaText(db: DB): string {
   const tables = db.prepare(`SELECT sql FROM sqlite_master WHERE type = 'table' AND name NOT IN ('sqlite_sequence', 'schema_version')
@@ -73,13 +76,47 @@ function claudeEnv(): NodeJS.ProcessEnv {
   return env;
 }
 
+/**
+ * The work dir holds copies of the insurance and pension documents, so it has to be ours alone:
+ * 0700, owned by this user (never a directory or symlink someone else planted in /tmp).
+ */
+function ensureWorkdir(): void {
+  mkdirSync(WORKDIR, { recursive: true, mode: 0o700 });
+  const st = lstatSync(WORKDIR);
+  if (!st.isDirectory() || st.uid !== userInfo().uid) throw new Error(`${WORKDIR} is not ours — remove it and try again`);
+  if ((st.mode & 0o777) !== 0o700) chmodSync(WORKDIR, 0o700); // an existing dir keeps its own mode
+  registerCleanup();
+}
+
+let cleanupRegistered = false;
+function registerCleanup(): void {
+  if (cleanupRegistered) return;
+  cleanupRegistered = true;
+  const remove = () => rmSync(WORKDIR, { recursive: true, force: true });
+  process.once('exit', remove);
+  // 'exit' doesn't run when a signal kills us
+  for (const sig of ['SIGINT', 'SIGTERM'] as const) process.once(sig, () => { remove(); process.exit(0); });
+}
+
+/**
+ * The documents only have to be on disk while an agent is reading them (syncAgentFiles copies them
+ * again for the next message), so drop them as soon as the last one exits — a killed server, or one
+ * that is simply idle, then leaves no copy of them behind.
+ */
+let agentsRunning = 0;
+function releaseDocs(): void {
+  if (--agentsRunning > 0) return;
+  agentsRunning = 0;
+  rmSync(join(WORKDIR, 'docs'), { recursive: true, force: true });
+}
+
 export function agentRoutes(app: FastifyInstance, db: DB): void {
   app.post('/api/agent/chat', async (req, reply) => {
     const { message, sessionId } = (req.body ?? {}) as { message?: string; sessionId?: string };
     if (!message?.trim()) return reply.code(400).send({ error: 'message is required' });
-    if (sessionId && !/^[\w-]{8,64}$/.test(sessionId)) return reply.code(400).send({ error: 'bad sessionId' });
+    if (sessionId && !SESSION_ID.test(sessionId)) return reply.code(400).send({ error: 'bad sessionId' });
 
-    mkdirSync(WORKDIR, { recursive: true });
+    ensureWorkdir();
     syncAgentFiles();
     const mcpConfig = {
       mcpServers: {
@@ -107,6 +144,9 @@ export function agentRoutes(app: FastifyInstance, db: DB): void {
     ];
     const child = spawn('claude', args, { cwd: WORKDIR, env: claudeEnv(), stdio: ['pipe', 'pipe', 'pipe'] });
     child.stdin.end(message);
+    agentsRunning++;
+    let released = false;
+    const release = () => { if (!released) { released = true; releaseDocs(); } }; // 'error' and 'close' can both fire
 
     reply.hijack();
     reply.raw.writeHead(200, { 'content-type': 'text/event-stream; charset=utf-8', 'cache-control': 'no-cache', connection: 'keep-alive' });
@@ -143,10 +183,12 @@ export function agentRoutes(app: FastifyInstance, db: DB): void {
     child.on('error', err => {
       emit({ type: 'done', error: (err as NodeJS.ErrnoException).code === 'ENOENT' ? 'Claude Code (claude) is not installed or not on PATH' : err.message });
       finished = true;
+      release();
       reply.raw.end();
     });
     child.on('close', code => {
       if (!finished) emit({ type: 'done', error: stderr.trim().slice(-600) || `claude exited with code ${code}` });
+      release();
       reply.raw.end();
     });
   });

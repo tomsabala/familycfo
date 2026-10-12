@@ -18,6 +18,28 @@ const PORT = Number(process.env.PORT ?? 4310);
 
 const app = Fastify({ logger: { level: process.env.LOG_LEVEL ?? 'warn' } });
 
+/**
+ * Local-only has to mean local. Binding to 127.0.0.1 keeps the network out but not the browser: a site
+ * whose DNS name is rebound to 127.0.0.1 is same-origin with this API and would otherwise be able to
+ * read the whole household, start a scrape or drive the chat. So serve loopback Host headers only, and
+ * refuse a cross-site Origin. The web app passes both: Vite proxies /api from 127.0.0.1:WEB_PORT.
+ */
+function isLoopback(host: string | undefined): boolean {
+  if (!host || /[@/\\]/.test(host)) return false;
+  let hostname: string;
+  try { hostname = new URL(`http://${host}`).hostname.toLowerCase(); } catch { return false; }
+  return hostname === 'localhost' || hostname === '[::1]' || /^127\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(hostname);
+}
+
+app.addHook('onRequest', async (req, reply) => {
+  const { host, origin } = req.headers;
+  if (!isLoopback(host)) return reply.code(403).send({ error: 'this API answers on 127.0.0.1 only' });
+  if (origin !== undefined) {
+    const originHost = URL.canParse(origin) ? new URL(origin).host : undefined;
+    if (!isLoopback(originHost)) return reply.code(403).send({ error: 'cross-origin request refused' });
+  }
+});
+
 registerCrud(app, db, { table: 'members', path: 'members', columns: ['name', 'color'], allowDelete: false });
 registerCrud(app, db, {
   table: 'accounts', path: 'accounts', idType: 'text', allowCreate: false, allowDelete: false,

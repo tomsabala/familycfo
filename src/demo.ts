@@ -134,7 +134,17 @@ function seedDemo(db: DB): void {
   holding.run('CASH', 'מזומן בתיק', 3500, 'ILS', 1, null, 1, now);
 }
 
+/** The demo deletes its database before seeding — never let that be a real one by accident. */
+function assertDemoTarget(): void {
+  if (process.argv.includes('--force')) return;
+  if (/(^|\/)demo[^/]*\.db$/.test(PATH)) return;
+  console.error(`Refusing to build the demo in "${PATH}": it would be deleted and replaced with made-up data.`);
+  console.error(`BANK_DB points at it — unset BANK_DB (or point it at a *demo*.db). To wipe it anyway: npm run demo -- --force`);
+  process.exit(1);
+}
+
 async function main() {
+  assertDemoTarget();
   for (const suffix of ['', '-shm', '-wal']) if (existsSync(PATH + suffix)) rmSync(PATH + suffix);
   const db = openDb(PATH);
   seedDemo(db);
