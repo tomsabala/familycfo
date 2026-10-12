@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { AlertTriangle, ChartCandlestick, ChartPie, Coins, LineChart, Pencil, RefreshCw, Search, Sparkles, Trash2, TrendingUp, Wallet } from 'lucide-react';
 import { api, type Holding, type LiveQuote, type Portfolio, type SymbolMatch } from '../api';
 import { day, fullDate, moneyIn } from '../format';
+import { useFeatures } from '../state';
 import { Empty, ErrorBox, Field, Loading, MemberBadge, MemberSelect, Modal, Money, PageHeader, SectionTitle, Stat } from '../components/ui';
 import { DonutChart, SimpleLine } from '../components/charts';
 import { askAgent } from '../components/AgentChat';
@@ -20,6 +21,7 @@ type Draft = Partial<Holding> & { manual?: boolean };
 
 export default function Investments() {
   const qc = useQueryClient();
+  const features = useFeatures();
   const { data, isLoading, error, isFetching } = useQuery({
     queryKey: ['investments'], queryFn: () => api.get<Portfolio>('/investments'), refetchInterval: 60_000,
   });
@@ -42,7 +44,7 @@ export default function Investments() {
           <button type="button" className="btn" disabled={refresh.isPending} onClick={() => refresh.mutate()}>
             <RefreshCw className={cn((refresh.isPending || isFetching) && 'animate-spin')} />רענון מחירים
           </button>
-          {holdings.length > 0 && <button type="button" className="btn" onClick={() => askAgent('תן לי סקירה של תיק ההשקעות שלי בשוק ההון', true)}><Sparkles />סקירה עם העוזר</button>}
+          {features.chat && holdings.length > 0 && <button type="button" className="btn" onClick={() => askAgent('תן לי סקירה של תיק ההשקעות שלי בשוק ההון', true)}><Sparkles />סקירה עם העוזר</button>}
           <button type="button" className="btn btn-primary" onClick={() => setEditing({})}>+ החזקה</button>
         </>} />
 

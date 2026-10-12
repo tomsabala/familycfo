@@ -1,8 +1,10 @@
 import type { DB } from '../db/connection.js';
-import { scrapeAll } from '../scraper.js';
+import type { Config } from '../scraper.js';
 import { runPipeline } from '../pipeline.js';
 // reads the bank credentials file; the credentials go only to the scraper and are never returned by the API
 import { loadConfig } from '../config.js';
+import { HOSTED } from '../features.js';
+import { storedConfig } from './secretStore.js';
 
 /**
  * One scrape at a time, started from the UI: all banks, then the pipeline. The bank's OTP screen
@@ -43,15 +45,39 @@ const setCompany = (company: string, patch: Partial<ScrapeCompanyState>) => {
   state.companies = state.companies.map(c => (c.company === company ? { ...c, ...patch } : c));
 };
 
+/**
+ * Hosted, /api/scrape is a public endpoint that performs third-party logins from the VPS's IP: a
+ * wrong password repeated locks the visitor's own bank account, and the IP is shared by every
+ * visitor. Both counters are per container, i.e. per visitor session.
+ */
+const MIN_INTERVAL_MS = 120_000;   // a bank login attempt every two minutes, at most
+const MAX_RUNS = 20;               // per container lifetime
+let lastRunAt = 0;
+let runCount = 0;
+
 export function startScrape(db: DB): ScrapeJobState {
   if (scrapeRunning()) throw Object.assign(new Error('a scrape is already running'), { statusCode: 409 });
-  let config: ReturnType<typeof loadConfig>;
+  if (HOSTED) {
+    const waitMs = MIN_INTERVAL_MS - (Date.now() - lastRunAt);
+    if (waitMs > 0) {
+      throw Object.assign(new Error(`סריקה נוספת אפשרית בעוד ${Math.ceil(waitMs / 1000)} שניות`), { statusCode: 429 });
+    }
+    if (runCount >= MAX_RUNS) {
+      throw Object.assign(new Error('הגעת למספר הסריקות המרבי במפגש הזה'), { statusCode: 429 });
+    }
+  }
+  let config: Config;
   try {
-    config = loadConfig();
-  } catch {
+    // Hosted, the logins are the visitor's own, from this container's encrypted store; locally they
+    // are the operator's accounts.json. Never both.
+    config = HOSTED ? storedConfig(db) : loadConfig();
+  } catch (err) {
+    if (HOSTED) throw err;
     throw Object.assign(new Error('the scraper configuration is missing or invalid (see accounts.example.json)'), { statusCode: 400 });
   }
   const only = process.env.SCRAPE_ONLY?.split(',').map(s => s.trim()).filter(Boolean);
+  lastRunAt = Date.now();
+  runCount += 1;
   state = {
     ...idle(), status: 'running', startedAt: new Date().toISOString(),
     companies: config.accounts.filter(a => !only || only.includes(a.companyId))
@@ -59,6 +85,10 @@ export function startScrape(db: DB): ScrapeJobState {
   };
 
   (async () => {
+    // Deliberately dynamic, not a static import: `../scraper.js` pulls in israeli-bank-scrapers →
+    // puppeteer → a whole Chromium launch stack, and a container boot that never scrapes (every
+    // cold start of a 1 GB instance) must not pay for it. Deferred until a scrape actually starts.
+    const { scrapeAll } = await import('../scraper.js');
     const results = await scrapeAll(config, db, {
       requestOtp: company => new Promise<string>(resolve => {
         answerOtp = resolve;

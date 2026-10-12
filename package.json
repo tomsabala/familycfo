@@ -19,12 +19,15 @@
     "import:pension": "tsx src/import/pensionReport.ts",
     "import:insurance": "tsx src/import/insurancePolicies.ts",
     "pipeline": "tsx src/pipeline.ts",
+    "build": "tsc -p tsconfig.json && npm --prefix web run build",
+    "serve": "node dist/server/index.js",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
     "demo": "tsx src/demo.ts",
     "dev:demo": "BANK_DB=demo.db npm run dev"
   },
   "dependencies": {
+    "@fastify/static": "^10.1.6",
     "better-sqlite3": "^11.7.0",
     "fastify": "^5.12.5",
     "israeli-bank-scrapers": "^6.12.2",

@@ -5,6 +5,16 @@ import * as readline from 'readline';
 import type { Page } from 'puppeteer';
 import { existsSync } from 'fs';
 import { platform } from 'os';
+import { HOSTED } from './features.js';
+
+/**
+ * Replace every credential value with `***`. A bank's own error text routinely quotes what was
+ * typed, and that text is logged, stored in scrape_runs and shown in the UI. Values shorter than 4
+ * characters are left out by the caller: they would match ordinary words.
+ */
+export function scrubSecrets(secrets: string[], text: string | undefined): string {
+  return secrets.reduce((t, s) => t.split(s).join('***'), text ?? '');
+}
 
 function findChromePath(): string | undefined {
   const paths: Record<string, string[]> = {
@@ -146,6 +156,11 @@ export async function scrapeAll(config: Config, db: DB = getDb(), hooks: ScrapeH
   const only = process.env.SCRAPE_ONLY?.split(',').map(s => s.trim()).filter(Boolean);
   const summaries: ScrapeSummary[] = [];
 
+  // A credential must never reach a log, the scrape_runs table or the UI — including inside an
+  // error message echoed back by a bank site.
+  const secrets = config.accounts.flatMap(a => Object.values(a.credentials)).filter(v => v.length >= 4);
+  const scrub = (text: string | undefined) => scrubSecrets(secrets, text);
+
   for (const account of config.accounts) {
     if (only && !only.includes(account.companyId)) continue;
     console.log(`Scraping ${account.companyId}...`);
@@ -161,7 +176,8 @@ export async function scrapeAll(config: Config, db: DB = getDb(), hooks: ScrapeH
         // per-transaction detail requests (e.g. Isracard PirteyIska_204) get rate-limited (HTTP 429) as automation
         additionalTransactionInformation: false,
         includeRawTransaction: true,
-        verbose: true,
+        // the library's verbose trace goes to the container log, which the VPS operator can read
+        verbose: !HOSTED,
         combineInstallments: false,
         showBrowser: process.env.SHOW_BROWSER !== '0',
         timeout: 120000, // 2 minutes for OTP
@@ -240,13 +256,14 @@ export async function scrapeAll(config: Config, db: DB = getDb(), hooks: ScrapeH
       const result = await scraper.scrape(account.credentials as never);
 
       if (!result.success) {
-        console.error(`Failed to scrape ${account.companyId}:`, result.errorType, result.errorMessage);
-        if (pageStateAtClose) console.error(pageStateAtClose);
+        console.error(`Failed to scrape ${account.companyId}:`, result.errorType, scrub(result.errorMessage));
+        // describePage prints the logged-in page's visible text, i.e. the visitor's balances
+        if (!HOSTED && pageStateAtClose) console.error(pageStateAtClose);
         recordScrapeRun(db, { company: account.companyId, startedAt, success: false,
-          errorType: result.errorType, errorMessage: result.errorMessage });
+          errorType: result.errorType, errorMessage: scrub(result.errorMessage) });
         summaries.push({ company: account.companyId, success: false, newTransactionIds: [], errorType: result.errorType });
         hooks.onProgress?.({ type: 'done', company: account.companyId, success: false, newTransactions: 0,
-          errorType: result.errorType, errorMessage: result.errorMessage });
+          errorType: result.errorType, errorMessage: scrub(result.errorMessage) });
         continue;
       }
 
@@ -261,12 +278,12 @@ export async function scrapeAll(config: Config, db: DB = getDb(), hooks: ScrapeH
       summaries.push({ company: account.companyId, success: true, newTransactionIds: newIds });
       hooks.onProgress?.({ type: 'done', company: account.companyId, success: true, newTransactions: newIds.length });
     } catch (err) {
-      console.error(`Error scraping ${account.companyId}:`, err);
+      console.error(`Error scraping ${account.companyId}:`, scrub(err instanceof Error ? err.stack ?? err.message : String(err)));
       recordScrapeRun(db, { company: account.companyId, startedAt, success: false,
-        errorType: 'EXCEPTION', errorMessage: String(err) });
+        errorType: 'EXCEPTION', errorMessage: scrub(String(err)) });
       summaries.push({ company: account.companyId, success: false, newTransactionIds: [], errorType: 'EXCEPTION' });
       hooks.onProgress?.({ type: 'done', company: account.companyId, success: false, newTransactions: 0,
-        errorType: 'EXCEPTION', errorMessage: err instanceof Error ? err.message : String(err) });
+        errorType: 'EXCEPTION', errorMessage: scrub(err instanceof Error ? err.message : String(err)) });
     }
   }
   return summaries;

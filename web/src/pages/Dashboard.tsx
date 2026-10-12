@@ -3,12 +3,13 @@ import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { CreditCard, Gauge as GaugeIcon, Landmark, LayoutDashboard, PiggyBank, Receipt, Sparkles, TriangleAlert, Users, Wallet } from 'lucide-react';
 import { api, qs, type CycleSummary, type InstallmentPlan, type Summary } from '../api';
-import { useFilters, useLookups } from '../state';
+import { useFeatures, useFilters, useLookups } from '../state';
 import { day, monthName } from '../format';
 import { ErrorBox, Loading, MemberBadge, Money, MoreLink, PageHeader, Progress, SectionTitle, SeverityDot, Stat } from '../components/ui';
 import { BarList, CashflowBars, DonutChart, ForecastChart, Gauge } from '../components/charts';
 import { DayDetails } from '../components/DayDetails';
 import { ScrapeButton } from '../components/ScrapeButton';
+import { FirstRun } from '../components/FirstRun';
 import { categoryIcon, hueFor, MemberAvatar } from '@/lib/visuals';
 
 const shortMonth = (key: string) => new Intl.DateTimeFormat('he-IL', { month: 'short' }).format(new Date(`${key}-01T12:00:00`));
@@ -16,11 +17,15 @@ const shortMonth = (key: string) => new Intl.DateTimeFormat('he-IL', { month: 's
 export default function Dashboard() {
   const { params } = useFilters();
   const { accountName, member, meta } = useLookups();
+  const features = useFeatures();
   const { data, isLoading, error } = useQuery({ queryKey: ['summary', params], queryFn: () => api.get<Summary>(`/summary${qs(params)}`) });
   const installments = useQuery({ queryKey: ['installments', params], queryFn: () => api.get<InstallmentPlan[]>(`/installments${qs(params)}`) });
   const history = useQuery({ queryKey: ['cashflow', params], queryFn: () => api.get<CycleSummary[]>(`/cashflow${qs({ ...params, cycles: 7 })}`) });
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
 
+  // Hosted, no scraped account means the visitor has not chosen demo data or their own bank yet.
+  // `manual:entries` is in every fresh database (migration 10), so it does not count as a choice.
+  if (features.hosted && meta && meta.accounts.every(a => a.kind === 'manual')) return <FirstRun />;
   if (isLoading) return <Loading />;
   if (error || !data) return <ErrorBox error={error} />;
 
@@ -52,7 +57,7 @@ export default function Dashboard() {
 
   return (
     <>
-      <PageHeader title="סקירה" icon={LayoutDashboard} subtitle={`מחזור ${monthName(cycle.cycle.key)} · ${day(cycle.cycle.start)} – ${day(cycle.cycle.end)}`} actions={<ScrapeButton />} />
+      <PageHeader title="סקירה" icon={LayoutDashboard} subtitle={`מחזור ${monthName(cycle.cycle.key)} · ${day(cycle.cycle.start)} – ${day(cycle.cycle.end)}`} actions={features.scrape ? <ScrapeButton /> : undefined} />
 
       <div className="grid grid-cols-2 gap-3 max-[22.5rem]:grid-cols-1 md:gap-4 lg:grid-cols-4">
         <Stat index={0} icon={Landmark} color="var(--chart-5)" label="יתרה בבנקים עכשיו" value={bankTotal} tone={bankTotal < 0 ? 'bad' : undefined}

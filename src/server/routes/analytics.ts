@@ -14,6 +14,7 @@ import { scrapeState, startScrape, submitOtp } from '../scrapeJob.js';
 import { toApi } from '../crud.js';
 import { monthPlan } from '../../analytics/commitments.js';
 import { parseFilter } from './transactions.js';
+import { FEATURES } from '../../features.js';
 
 type Q = Record<string, string | undefined>;
 
@@ -166,15 +167,17 @@ export function analyticsRoutes(app: FastifyInstance, db: DB): void {
   app.post('/api/pipeline', async () => runPipeline(db, { txIds: [] }));
 
   // the scrape started from the UI: progress, and the bank's OTP request
-  app.get('/api/scrape', async () => ({
-    ...scrapeState(),
-    lastSuccessAt: db.prepare(`SELECT MAX(finished_at) FROM scrape_runs WHERE success = 1`).pluck().get() as string | null,
-  }));
-  app.post('/api/scrape', async () => startScrape(db));
-  app.post('/api/scrape/otp', async req => {
-    submitOtp(String((req.body as { code?: unknown })?.code ?? '').trim());
-    return { ok: true };
-  });
+  if (FEATURES.scrape) {
+    app.get('/api/scrape', async () => ({
+      ...scrapeState(),
+      lastSuccessAt: db.prepare(`SELECT MAX(finished_at) FROM scrape_runs WHERE success = 1`).pluck().get() as string | null,
+    }));
+    app.post('/api/scrape', async () => startScrape(db));
+    app.post('/api/scrape/otp', async req => {
+      submitOtp(String((req.body as { code?: unknown })?.code ?? '').trim());
+      return { ok: true };
+    });
+  }
 
   app.get('/api/sync-status', async () => (db.prepare(`
     SELECT r.company, r.started_at, r.finished_at, r.success, r.error_type, r.error_message, r.new_transactions,

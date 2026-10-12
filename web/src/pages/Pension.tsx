@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import { api, type PensionOverview, type PensionProduct } from '../api';
 import { day, fullDate, monthName, todayIso } from '../format';
+import { useFeatures } from '../state';
 import { Empty, ErrorBox, Loading, MemberBadge, Modal, Money, PageHeader, Progress, SectionTitle, Stat } from '../components/ui';
 import { DonutChart, StackedColumns } from '../components/charts';
 import { askAgent } from '../components/AgentChat';
@@ -30,6 +31,7 @@ const yearlyFees = (p: PensionProduct) =>
   (p.value ?? 0) * (p.feeBalancePct ?? 0) / 100 + (p.monthlyDeposit ?? 0) * 12 * (p.feeDepositPct ?? 0) / 100;
 
 export default function Pension() {
+  const features = useFeatures();
   const { data, isLoading, error } = useQuery({ queryKey: ['pension'], queryFn: () => api.get<PensionOverview>('/pension') });
   const [open, setOpen] = useState<PensionProduct | null>(null);
 
@@ -58,7 +60,7 @@ export default function Pension() {
     <>
       <PageHeader title="פנסיה וגמל" icon={Umbrella}
         subtitle={report ? <>נכון ל-{fullDate(report.asOf)} · {report.source}{s?.agent && <> · הסוכן: {s.agent.name} {s.agent.phone}</>}</> : undefined}
-        actions={<button type="button" className="btn" onClick={() => askAgent('תן לי סקירה של הפנסיה, קרנות ההשתלמות וקופות הגמל שלי', true)}><Sparkles />סקירה עם העוזר</button>} />
+        actions={features.chat ? <button type="button" className="btn" onClick={() => askAgent('תן לי סקירה של הפנסיה, קרנות ההשתלמות וקופות הגמל שלי', true)}><Sparkles />סקירה עם העוזר</button> : undefined} />
 
       <div className="grid grid-cols-2 gap-3 max-[22.5rem]:grid-cols-1 md:gap-4 lg:grid-cols-4">
         <Stat index={0} icon={PiggyBank} label="סך החיסכון" value={totals.value}
@@ -177,6 +179,7 @@ export default function Pension() {
 }
 
 function ProductDetails({ product: p, onClose }: { product: PensionProduct; onClose: () => void }) {
+  const features = useFeatures();
   const d = p.details;
   const deposits = p.deposits.filter(x => x.salaryMonth);
   const chart = deposits.map(x => ({
@@ -257,9 +260,11 @@ function ProductDetails({ product: p, onClose }: { product: PensionProduct; onCl
         </div>
       )}
 
-      <button type="button" className="btn" onClick={() => { onClose(); askAgent(`לגבי ${d?.product ?? p.name} ב${p.provider} (${p.policyNumber}): `); }}>
-        <Sparkles />שאל את העוזר על המוצר הזה
-      </button>
+      {features.chat && (
+        <button type="button" className="btn" onClick={() => { onClose(); askAgent(`לגבי ${d?.product ?? p.name} ב${p.provider} (${p.policyNumber}): `); }}>
+          <Sparkles />שאל את העוזר על המוצר הזה
+        </button>
+      )}
     </Modal>
   );
 }

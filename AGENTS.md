@@ -12,6 +12,7 @@ npm run migrate    # Apply DB migrations (also runs automatically on open)
 npm test           # Vitest unit tests (in-memory SQLite)
 npm run typecheck  # API typecheck; web: npm --prefix web run typecheck
 npm run demo       # Build demo.db with made-up data; npm run dev:demo runs the app on it
+npm run build      # tsc → dist/ + the SPA → web/dist (what the container runs); npm run serve starts dist/server/index.js
 ```
 
 ## Architecture
@@ -30,6 +31,8 @@ Israeli bank scraper + local household-finance app for a family (members are con
 - Stock-market investments (`/investments`, `src/server/routes/investments.ts`): `holdings` (symbol, quantity, optional buy price / date; no buy price → `baseline_price` = the price when added, the yield runs from it; `manual_price` for something with no quote). Live prices from Yahoo Finance (`src/analytics/quotes.ts`, only symbols are sent; TASE quotes in agorot → stored in ₪) cached in `quotes` (refreshed when older than a minute on page load, 5 min for `/networth`, and in the pipeline), daily closes in `quote_history` (from each holding's start; Yahoo FX rates fill days BOI hasn't published, never replace them). Valuation in `src/analytics/investments.ts`; net worth adds one `brokerage` item per broker + owner, and the closes to its month-end history.
 - `src/server/scrapeJob.ts` — scrape started from the overview button (one at a time, in memory); the Hapoalim OTP is answered via `POST /api/scrape/otp`.
 - `web/` — Vite + React + Tailwind, Hebrew RTL. Global filter (member / business / tags) in `state.tsx`. Its TS config is `web/tsconfig.app.json`.
+- **Hosted mode** (`src/features.ts`, `HOSTED=1`, set only by the `Dockerfile`): one container per visitor behind the apps gateway at `/a/familycfo`. It binds `0.0.0.0`, swaps the loopback guard for a same-origin one (`Host` can't be pinned — the broker's readiness probe uses the container IP), serves `web/dist` through `@fastify/static` with an SPA fallback, and strips `FAMILYCFO_BASE_PATH` via Fastify's `rewriteUrl` (the SPA bakes the same value in as Vite's `base`; `web/src/basePath.ts` is the only client-side copy). `FEATURES` gates `scrape` (off by default hosted, on via `FEATURE_SCRAPE=1`) and `chat` (always off hosted). `GET /api/meta` reports them; `useFeatures()` is the web side.
+- Hosted credentials (`src/server/secretStore.ts`, `src/server/routes/hosted.ts`, migration 15): the visitor types bank logins into Settings → "בנקים מחוברים"; they are AES-256-GCM ciphertext in `provider_credentials` under a `0600` `.secret_key` next to the DB, never returned by any endpoint, and scrubbed (`scrubSecrets`) out of logs, `scrape_runs` and error text. `/api/household/demo` seeds the demo into an empty household, `/api/household/reset` wipes everything (`src/db/reset.ts` + the key file). `/api/scrape` is rate-limited per container there.
 
 **Key rules:**
 - Transaction `kind` decides what counts: `transfer`, `card_payment` and `savings` are never income/spend. A bank row like `ויזה`/`כאל` is a `card_payment` only when a scraped card's charges explain it; otherwise it is a debit purchase (expense).

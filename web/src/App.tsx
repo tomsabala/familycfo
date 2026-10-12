@@ -7,7 +7,7 @@ import {
   ChartCandlestick, Settings2, ShieldCheck, Tags, TrendingUp, Umbrella, Wallet, X, type LucideIcon,
 } from 'lucide-react';
 import { api, type Alert } from './api';
-import { useFilters, useMeta } from './state';
+import { useFeatures, useFilters, useMeta } from './state';
 import Dashboard from './pages/Dashboard';
 import Transactions from './pages/Transactions';
 import Budgets from './pages/Budgets';
@@ -126,6 +126,7 @@ export default function App() {
   const drawer = useRef<HTMLElement>(null);
   const { data: alerts } = useQuery({ queryKey: ['alerts', 'open'], queryFn: () => api.get<Alert[]>('/alerts') });
   const unseen = alerts?.filter(a => !a.seenAt).length ?? 0;
+  const features = useFeatures();
   const drawerMode = !isTabletUp;
   const current = NAV.find(n => (n.to === '/' ? pathname === '/' : pathname.startsWith(n.to)));
 
@@ -237,7 +238,7 @@ export default function App() {
             </span>
             <div className="hidden min-w-0 flex-1 md:block"><FilterBar /></div>
             <div className="ms-auto flex shrink-0 items-center gap-1">
-              <AgentChat />
+              {features.chat && <AgentChat />}
               <AlertsBell unseen={unseen} />
             </div>
           </div>

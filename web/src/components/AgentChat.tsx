@@ -2,6 +2,7 @@ import { Fragment, useEffect, useRef, useState, type ReactNode } from 'react';
 import { Dialog } from 'radix-ui';
 import { ArrowUp, Database, LoaderCircle, Mic, Plus, Sparkles, Square, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { apiUrl } from '@/basePath';
 
 /**
  * The data chat: a drawer that asks the user's own Claude Code (via POST /api/agent/chat, streamed)
@@ -145,7 +146,7 @@ export function AgentChat() {
     const controller = new AbortController();
     abort.current = controller;
     try {
-      const res = await fetch('/api/agent/chat', {
+      const res = await fetch(apiUrl('/agent/chat'), {
         method: 'POST', headers: { 'content-type': 'application/json' }, signal: controller.signal,
         body: JSON.stringify({ message, sessionId: state.sessionId }),
       });

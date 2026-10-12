@@ -1,3 +1,5 @@
+import { apiUrl } from './basePath';
+
 export interface Member { id: number; name: string; color: string | null }
 export interface Account {
   id: string; company: string; kind: 'bank' | 'card' | 'manual'; displayName: string | null; ownerMemberId: number | null;
@@ -13,7 +15,16 @@ export interface Fund { id: number; name: string; monthlyTarget: number; balance
 export interface Meta {
   members: Member[]; accounts: Account[]; categories: Category[]; businesses: Business[]; tags: Tag[]; funds: Fund[];
   settings: Record<string, string>;
+  features: { scrape: boolean; chat: boolean; hosted: boolean };
 }
+
+/** Hosted only: a bank/card login the visitor can connect, straight from israeli-bank-scrapers. */
+export interface Provider {
+  companyId: string; name: string;
+  loginFields: { name: string; secret: boolean }[];
+}
+/** A connected login. Never carries a field value — `hint` is the last 4 of the first non-secret field. */
+export interface StoredCredential { companyId: string; name: string; hint: string | null; updatedAt: string }
 
 export interface Tx {
   id: number; accountId: string; accountName?: string; accountKind: 'bank' | 'card' | 'manual'; date: string; processedDate: string;
@@ -135,7 +146,7 @@ export interface Rule {
 }
 
 async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
-  const res = await fetch(`/api${path}`, {
+  const res = await fetch(apiUrl(path), {
     method,
     headers: body !== undefined ? { 'content-type': 'application/json' } : undefined,
     body: body !== undefined ? JSON.stringify(body) : undefined,
@@ -144,7 +155,8 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
     const err = await res.json().catch(() => ({ error: res.statusText }));
     throw new Error(err.error ?? res.statusText);
   }
-  return res.json() as Promise<T>;
+  // 204: a write with nothing to report (the hosted credential routes)
+  return (res.status === 204 ? undefined : await res.json()) as T;
 }
 
 export const api = {

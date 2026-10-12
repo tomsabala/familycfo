@@ -5,7 +5,8 @@ import {
   MessageCircleQuestion, PawPrint, Plane, Plus, Receipt, Shield, ShieldCheck, Sparkles, Trash2, Wallet,
 } from 'lucide-react';
 import { api, type InsuranceDocument, type InsuranceOverview, type InsurancePolicy, type InsuranceType } from '../api';
-import { useLookups } from '../state';
+import { apiUrl } from '../basePath';
+import { useFeatures, useLookups } from '../state';
 import { day, fullDate, todayIso } from '../format';
 import { AccountSelect, Empty, ErrorBox, Field, Loading, MemberBadge, MemberSelect, Modal, Money, PageHeader, Picker, SectionTitle, Stat } from '../components/ui';
 import { askAgent } from '../components/AgentChat';
@@ -47,6 +48,7 @@ function fromCharge(u: InsuranceOverview['unlinked'][number]): Partial<Insurance
 export default function Insurance() {
   const qc = useQueryClient();
   const { accountName } = useLookups();
+  const features = useFeatures();
   const { data, isLoading, error } = useQuery({ queryKey: ['insurance'], queryFn: () => api.get<InsuranceOverview>('/insurance') });
   const [editing, setEditing] = useState<Partial<InsurancePolicy> | null>(null);
   const [showArchived, setShowArchived] = useState(false);
@@ -63,9 +65,11 @@ export default function Insurance() {
     <>
       <PageHeader title="ביטוחים" icon={ShieldCheck} subtitle="כל הפוליסות במקום אחד: כיסוי, עלות בפועל, מועדי חידוש והמסמכים עצמם — ואפשר לשאול עליהם את העוזר"
         actions={<>
-          <button type="button" className="btn" onClick={() => askAgent('תן לי סקירה של כל הביטוחים שלנו: מה יש, כמה זה עולה, כפל ביטוח ומה מתחדש בקרוב', true)}>
-            <Sparkles />סקירה עם העוזר
-          </button>
+          {features.chat && (
+            <button type="button" className="btn" onClick={() => askAgent('תן לי סקירה של כל הביטוחים שלנו: מה יש, כמה זה עולה, כפל ביטוח ומה מתחדש בקרוב', true)}>
+              <Sparkles />סקירה עם העוזר
+            </button>
+          )}
           <button type="button" className="btn btn-primary" onClick={() => open({ type: 'health', premiumFrequency: 'monthly' })}><Plus />פוליסה</button>
         </>} />
 
@@ -164,6 +168,7 @@ function PolicyEditor({ policy, onClose, onSaved }: {
   policy: Partial<InsurancePolicy>; onClose: () => void; onSaved: (p: InsurancePolicy) => void;
 }) {
   const qc = useQueryClient();
+  const features = useFeatures();
   const [draft, setDraft] = useState<Partial<InsurancePolicy>>(policy);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const set = (patch: Partial<InsurancePolicy>) => setDraft(d => ({ ...d, ...patch }));
@@ -243,7 +248,7 @@ function PolicyEditor({ policy, onClose, onSaved }: {
       </div>
 
       <div className="border-t pt-4">
-        <SectionTitle icon={FileText} as="h3" action={draft.id ? (
+        <SectionTitle icon={FileText} as="h3" action={draft.id && features.chat ? (
           <button type="button" className="btn btn-sm" onClick={() => askAgent(`לגבי ${draft.name}${draft.insurer ? ` (${draft.insurer})` : ''}: `)}>
             <MessageCircleQuestion />שאל על הפוליסה
           </button>
@@ -267,7 +272,7 @@ function Documents({ policyId, documents }: { policyId: number; documents: Insur
     mutationFn: async (files: File[]) => {
       for (const file of files) {
         const mime = file.type || MIME_BY_EXT[file.name.split('.').pop()?.toLowerCase() ?? ''] || 'application/octet-stream';
-        const res = await fetch(`/api/insurance/${policyId}/documents?name=${encodeURIComponent(file.name)}`, {
+        const res = await fetch(apiUrl(`/insurance/${policyId}/documents?name=${encodeURIComponent(file.name)}`), {
           method: 'POST', headers: { 'content-type': mime }, body: file,
         });
         if (!res.ok) throw new Error(`${file.name}: ${(await res.json().catch(() => null))?.error ?? res.statusText}`);
@@ -304,7 +309,7 @@ function Documents({ policyId, documents }: { policyId: number; documents: Insur
           {documents.map(d => (
             <li key={d.id} className="flex flex-wrap items-center gap-x-3 gap-y-2 px-3 py-2.5 text-sm">
               <FileText className="h-4 w-4 shrink-0 text-fg-subtle" />
-              <a href={`/api/insurance/documents/${d.id}/file`} target="_blank" rel="noreferrer" className="min-w-0 flex-1 truncate font-medium hover:underline">
+              <a href={apiUrl(`/insurance/documents/${d.id}/file`)} target="_blank" rel="noreferrer" className="min-w-0 flex-1 truncate font-medium hover:underline">
                 {d.originalName} <ExternalLink className="inline h-3 w-3 opacity-50" />
               </a>
               <span className="text-xs text-fg-subtle">{kb(d.size)} · {fullDate(d.uploadedAt)}</span>

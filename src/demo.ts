@@ -33,7 +33,9 @@ const ym = (d: string) => d.slice(0, 7);
 const dayOf = (month: string, day: number) => `${month}-${String(day).padStart(2, '0')}`;
 const nextMonth = (month: string) => { const d = new Date(`${month}-01T12:00:00Z`); d.setUTCMonth(d.getUTCMonth() + 1); return d.toISOString().slice(0, 7); };
 
-function seedDemo(db: DB): void {
+/** The invented household: members, accounts, transactions, assets, holdings. Also the body of
+ *  POST /api/household/demo in the hosted app, so it must stay side-effect free apart from `db`. */
+export function seedDemo(db: DB): void {
   const now = today();
   db.prepare(`UPDATE members SET name = 'דנה' WHERE id = 1`).run();
   db.prepare(`UPDATE members SET name = 'יואב' WHERE id = 2`).run();
@@ -155,4 +157,6 @@ async function main() {
   console.log('Run it with: npm run dev:demo');
 }
 
-main().catch(err => { console.error(err); process.exitCode = 1; });
+if (import.meta.url === `file://${process.argv[1]}`) {
+  await main();
+}

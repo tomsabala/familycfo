@@ -632,6 +632,19 @@ export const migrations: Migration[] = [
       const alias = db.prepare(`INSERT OR IGNORE INTO category_aliases (name, category_id) SELECT ?, id FROM categories WHERE name = ?`);
       for (const [from, to] of Object.entries(SCRAPER_CATEGORY_ALIASES)) alias.run(from, to);
     },
+  },  {
+    version: 15,
+    name: 'bank credentials entered in the app',
+    up(db) {
+      db.exec(`
+        CREATE TABLE provider_credentials (
+          company_id TEXT PRIMARY KEY,
+          ciphertext TEXT NOT NULL,
+          hint TEXT,
+          updated_at TEXT NOT NULL
+        )
+      `);
+    },
   },
 ];
 

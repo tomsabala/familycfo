@@ -80,6 +80,26 @@ It understands how Israeli money actually moves:
   `data/` (enforced by a hook that blocks reading anything else). It runs in a private `0700` work directory, and the
   document copies it reads there are deleted the moment it's done answering.
 
+### Hosted instance
+
+There is also a hosted build (the container behind `apps.tom-sabala.dev/a/familycfo/`). It is a
+different threat model, stated plainly:
+
+- It binds `0.0.0.0` and **enforces same-origin instead of loopback** — the `Host` header cannot be
+  pinned there, because the gateway's readiness probe addresses the container by IP.
+- It has **no login**. What separates two visitors is that they are two different containers; the
+  per-session container and the gateway's signed session cookie are the entire boundary.
+- A visitor's bank login is typed into the app, encrypted (AES-256-GCM) into that container's own
+  SQLite file under a key file next to it, never returned by any endpoint, and scrubbed out of logs
+  and error text. It is destroyed with the container — an admin instance keeps its database and key
+  on a named Docker volume until the volume is removed.
+- TLS terminates at the gateway; the hop from the gateway to the container is plaintext HTTP on a
+  private Docker network. The container has no egress allow-list.
+- The data chat is off there, and cannot be turned on.
+
+Anyone using the hosted app is trusting the operator of that VPS. **Running it locally remains the
+recommended way to use real bank logins.**
+
 ## Quick start — try the demo
 
 Requirements: **Node.js 20+** and npm. macOS or Linux (Windows works via WSL).

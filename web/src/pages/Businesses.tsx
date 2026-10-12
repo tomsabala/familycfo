@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, qs, type Tx } from '../api';
+import { apiUrl } from '../basePath';
 import { useLookups } from '../state';
 import { day, monthName, todayIso } from '../format';
 import { Briefcase, CalendarDays, CalendarRange, Download, Hash, PieChart, Receipt, TrendingUp } from 'lucide-react';
@@ -110,7 +111,7 @@ export default function Businesses() {
                 <label className="max-sm:min-w-0 max-sm:flex-1"><span className="label">מתאריך</span><input className="input" type="date" value={rangeFrom} onChange={e => setRangeFrom(e.target.value)} /></label>
                 <label className="max-sm:min-w-0 max-sm:flex-1"><span className="label">עד</span><input className="input" type="date" value={rangeTo} onChange={e => setRangeTo(e.target.value)} /></label>
               </>}
-              <a className="btn max-sm:w-full" href={`/api/businesses/${current}/export.csv${qs({ from, to })}`}><Download className="h-4 w-4" />ייצוא CSV לרו״ח</a>
+              <a className="btn max-sm:w-full" href={apiUrl(`/businesses/${current}/export.csv${qs({ from, to })}`)}><Download className="h-4 w-4" />ייצוא CSV לרו״ח</a>
             </div>
           </div>
 

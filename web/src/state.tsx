@@ -36,6 +36,11 @@ export function useMeta() {
   return useQuery({ queryKey: ['meta'], queryFn: () => api.get<Meta>('/meta'), staleTime: 60_000 });
 }
 
+/** Server-side feature flags. All false until meta loads, so a disabled control never flashes. */
+export function useFeatures(): Meta['features'] {
+  return useMeta().data?.features ?? { scrape: false, chat: false, hosted: false };
+}
+
 /** Lookup helpers over meta. */
 export function useLookups() {
   const { data } = useMeta();

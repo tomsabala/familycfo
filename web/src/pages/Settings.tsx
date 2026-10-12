@@ -2,12 +2,13 @@ import { useEffect, useState, type ComponentType } from 'react';
 import { Link } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, type Rule } from '../api';
-import { useLookups } from '../state';
+import { useFeatures, useLookups } from '../state';
 import { day } from '../format';
 import {
-  CalendarClock, Coins, Layers, Plus, RefreshCw, Settings2, SlidersHorizontal, Tags, Users, Wallet, Wand2, X,
+  CalendarClock, Coins, Landmark, Layers, Plus, RefreshCw, Settings2, SlidersHorizontal, Tags, Users, Wallet, Wand2, X,
 } from 'lucide-react';
 import { AccountSelect, CategorySelect, MemberSelect, PageHeader } from '../components/ui';
+import { ConnectBank } from '../components/ConnectBank';
 
 interface SyncRow { company: string; startedAt: string; success: number; errorType: string | null; errorMessage: string | null; newTransactions: number; lastSuccess: string | null }
 interface FxRow { currency: string; rate_to_ils: number; date: string; source: string }
@@ -15,6 +16,7 @@ interface FxRow { currency: string; rate_to_ils: number; date: string; source: s
 export default function Settings() {
   const qc = useQueryClient();
   const { meta, category } = useLookups();
+  const features = useFeatures();
   const refresh = (...keys: string[]) => { for (const k of ['meta', ...keys]) qc.invalidateQueries({ queryKey: [k] }); };
   const patch = useMutation({
     mutationFn: ({ path, body }: { path: string; body: Record<string, unknown> }) => api.patch(path, body),
@@ -141,21 +143,30 @@ export default function Settings() {
         </div>
       </Section>
 
-      <Section title="מצב סריקות" icon={RefreshCw} color="var(--chart-7)">
-        <div className="scroll-x card-bleed"><table className="table">
-          <thead><tr><th>חברה</th><th>סריקה אחרונה</th><th>תוצאה</th><th>הצלחה אחרונה</th><th className="text-end">חדשות</th></tr></thead>
-          <tbody>
-            {sync.data?.map(s => (
-              <tr key={s.company}>
-                <td>{s.company}</td><td className="text-xs">{day(s.startedAt)}</td>
-                <td>{s.success ? <span className="text-emerald-600">✓</span> : <span className="text-rose-600" title={s.errorMessage ?? ''}>✗ {s.errorType}</span>}</td>
-                <td className="text-xs">{day(s.lastSuccess)}</td><td className="text-end">{s.newTransactions}</td>
-              </tr>
-            ))}
-            {!sync.data?.length && <tr><td colSpan={5} className="text-sm text-zinc-500">עוד לא נרשמו סריקות (מתחיל מהסריקה הבאה)</td></tr>}
-          </tbody>
-        </table></div>
-      </Section>
+      {features.hosted && features.scrape && (
+        <Section id="banks" title="בנקים מחוברים" icon={Landmark} color="var(--chart-2)"
+          subtitle="פרטי ההתחברות נשמרים מוצפנים במפגש הזה בלבד, לא מוחזרים לעולם בשום בקשה, ונמחקים יחד עם המפגש.">
+          <ConnectBank />
+        </Section>
+      )}
+
+      {features.scrape && (
+        <Section title="מצב סריקות" icon={RefreshCw} color="var(--chart-7)">
+          <div className="scroll-x card-bleed"><table className="table">
+            <thead><tr><th>חברה</th><th>סריקה אחרונה</th><th>תוצאה</th><th>הצלחה אחרונה</th><th className="text-end">חדשות</th></tr></thead>
+            <tbody>
+              {sync.data?.map(s => (
+                <tr key={s.company}>
+                  <td>{s.company}</td><td className="text-xs">{day(s.startedAt)}</td>
+                  <td>{s.success ? <span className="text-emerald-600">✓</span> : <span className="text-rose-600" title={s.errorMessage ?? ''}>✗ {s.errorType}</span>}</td>
+                  <td className="text-xs">{day(s.lastSuccess)}</td><td className="text-end">{s.newTransactions}</td>
+                </tr>
+              ))}
+              {!sync.data?.length && <tr><td colSpan={5} className="text-sm text-zinc-500">עוד לא נרשמו סריקות (מתחיל מהסריקה הבאה)</td></tr>}
+            </tbody>
+          </table></div>
+        </Section>
+      )}
 
       <Section title="שערי מטבע" icon={Coins} color="var(--chart-8)" subtitle="מתעדכנים אוטומטית מבנק ישראל בכל סריקה. אפשר לעדכן ידנית.">
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">

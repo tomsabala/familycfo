@@ -6,6 +6,7 @@ import type { FastifyInstance } from 'fastify';
 import type { DB } from '../db/connection.js';
 import { cycleStartDay, today } from '../analytics/common.js';
 import { POLICIES_DIR, REPORTS_DIR } from './routes/insurance.js';
+import { FEATURES } from '../features.js';
 
 /**
  * The data chat: each message runs the user's own Claude Code (`claude -p`, their subscription) with
@@ -111,6 +112,9 @@ function releaseDocs(): void {
 }
 
 export function agentRoutes(app: FastifyInstance, db: DB): void {
+  // the chat spawns the user's own `claude` CLI and a tsx-run MCP server from source: it needs the
+  // host machine, and is off in the hosted image
+  if (!FEATURES.chat) return;
   app.post('/api/agent/chat', async (req, reply) => {
     const { message, sessionId } = (req.body ?? {}) as { message?: string; sessionId?: string };
     if (!message?.trim()) return reply.code(400).send({ error: 'message is required' });
